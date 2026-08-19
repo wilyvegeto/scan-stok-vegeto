@@ -92,13 +92,14 @@
 
       fetch(WEBAPP_URL, {
         method: 'POST',
+        mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ mode: mode, sku: sku, jumlah: jumlah, pihak: pihak, keterangan: keterangan })
       })
-        .then(function (r) { return r.text(); })
-        .then(function (text) {
-          var res = JSON.parse(text);
-          addLog(res.ok, res.message);
+        .then(function () {
+          // mode 'no-cors' tidak mengizinkan membaca isi respons (khususnya di Safari/iOS),
+          // jadi kita anggap berhasil terkirim selama tidak ada error jaringan.
+          addLog(true, sku + ' terkirim. Cek sheet Master_SKU / Dashboard untuk konfirmasi stok terbaru.');
         })
         .catch(function (err) {
           addLog(false, 'Gagal terhubung ke spreadsheet: ' + err);
