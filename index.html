@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scan Stok - Vegeto Junior</title>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 14px; color: #222; padding: 14px 16px 40px; max-width: 480px; margin: 0 auto; background:#fafafa; }
+  h2 { font-size: 17px; margin: 4px 0 14px; color: #1F4E78; text-align:center; }
+  .mode-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+  .mode-btn {
+    flex: 1; padding: 12px; font-size: 14px; font-weight: bold; border-radius: 6px;
+    border: 2px solid #ccc; background: #f5f5f5; color: #666; cursor: pointer;
+  }
+  .mode-btn.active.masuk { background: #2E75B6; border-color: #2E75B6; color: #fff; }
+  .mode-btn.active.keluar { background: #C0504D; border-color: #C0504D; color: #fff; }
+  label { display: block; margin-top: 10px; margin-bottom: 3px; font-weight: bold; color: #444; font-size: 13px; }
+  input[type=text], input[type=number] {
+    width: 100%; box-sizing: border-box; padding: 11px; font-size: 15px;
+    border: 1px solid #ccc; border-radius: 6px;
+  }
+  #sku { border: 2px solid #2E75B6; font-size: 16px; font-weight: bold; }
+  #sku:disabled { background: #eee; }
+  .hint { color: #888; font-size: 11px; margin-top: 3px; }
+  #camBtn {
+    width: 100%; margin-top: 14px; padding: 15px; font-size: 16px; font-weight: bold;
+    background: #2E7D32; color: #fff; border: none; border-radius: 8px;
+  }
+  #reader { width: 100%; margin-top: 10px; border-radius: 8px; overflow: hidden; display: none; }
+  #closeCamBtn {
+    width: 100%; margin-top: 6px; padding: 11px; background: #888; color: #fff;
+    border: none; border-radius: 6px; display: none;
+  }
+  #log { margin-top: 18px; max-height: 220px; overflow-y: auto; border-top: 1px solid #ddd; padding-top: 8px; }
+  .entry { padding: 7px 9px; margin-bottom: 5px; border-radius: 4px; font-size: 12.5px; }
+  .ok { background: #E2F0D9; color: #385723; }
+  .err { background: #FBE2E2; color: #9C0006; }
+</style>
+</head>
+<body>
+  <h2>📷 Scan Stok - Vegeto Junior</h2>
+
+  <div class="mode-toggle">
+    <button class="mode-btn masuk" id="btnMasuk" onclick="setMode('masuk')">📥 Barang Masuk</button>
+    <button class="mode-btn keluar" id="btnKeluar" onclick="setMode('keluar')">📤 Barang Keluar</button>
+  </div>
+
+  <label>Jumlah per scan</label>
+  <input type="number" id="jumlah" value="1" min="1">
+
+  <label>Supplier / Tujuan (opsional)</label>
+  <input type="text" id="pihak" placeholder="mis. Toko Kelapa Gading / Shopee">
+
+  <label>Keterangan (opsional)</label>
+  <input type="text" id="keterangan" placeholder="mis. restock rutin">
+
+  <label>SKU hasil scan (otomatis terisi)</label>
+  <input type="text" id="sku" placeholder="Tap tombol kamera di bawah untuk mulai scan" autocomplete="off" readonly>
+
+  <button id="camBtn" onclick="startCamera()">🎥 Mulai Scan Kamera</button>
+  <div id="reader"></div>
+  <button id="closeCamBtn" onclick="stopCamera()">Tutup Kamera</button>
+  <div class="hint">Arahkan kamera ke barcode SKU. Setelah terbaca, otomatis tersimpan ke spreadsheet dan kamera siap scan berikutnya.</div>
+
+  <div id="log"></div>
+
+  <script>
+    // Ganti URL ini kalau kamu membuat deployment baru di Apps Script
+    var WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxCkDtjfsZn5aBPWaZZCqYj_KJAOswOvzrvWncRRb_rIcV5KawxysFyEcQXQqfh-Yjr/exec";
+
+    var mode = "masuk";
+    var skuInput = document.getElementById('sku');
+    var html5QrCode = null;
+    var busy = false;
+
+    function setMode(m) {
+      mode = m;
+      document.getElementById('btnMasuk').classList.toggle('active', m === 'masuk');
+      document.getElementById('btnKeluar').classList.toggle('active', m === 'keluar');
+    }
+    setMode(mode);
+
+    function submitScan(sku) {
+      if (!sku || !sku.trim() || busy) return;
+      busy = true;
+      skuInput.value = sku;
+
+      var jumlah = document.getElementById('jumlah').value;
+      var pihak = document.getElementById('pihak').value;
+      var keterangan = document.getElementById('keterangan').value;
+
+      fetch(WEBAPP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ mode: mode, sku: sku, jumlah: jumlah, pihak: pihak, keterangan: keterangan })
+      })
+        .then(function (r) { return r.text(); })
+        .then(function (text) {
+          var res = JSON.parse(text);
+          addLog(res.ok, res.message);
+        })
+        .catch(function (err) {
+          addLog(false, 'Gagal terhubung ke spreadsheet: ' + err);
+        })
+        .finally(function () {
+          busy = false;
+          skuInput.value = '';
+        });
+    }
+
+    function addLog(ok, msg) {
+      var div = document.createElement('div');
+      div.className = 'entry ' + (ok ? 'ok' : 'err');
+      div.textContent = (ok ? '✅ ' : '❌ ') + msg;
+      var log = document.getElementById('log');
+      log.insertBefore(div, log.firstChild);
+    }
+
+    function startCamera() {
+      document.getElementById('reader').style.display = 'block';
+      document.getElementById('closeCamBtn').style.display = 'block';
+      document.getElementById('camBtn').style.display = 'none';
+
+      html5QrCode = new Html5Qrcode('reader', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ]
+      });
+
+      html5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 150 } },
+        function (decodedText) {
+          submitScan(decodedText);
+        },
+        function () { /* scan gagal per-frame, abaikan */ }
+      ).catch(function (err) {
+        addLog(false, 'Tidak bisa mengakses kamera: ' + err);
+        stopCamera();
+      });
+    }
+
+    function stopCamera() {
+      if (html5QrCode) {
+        html5QrCode.stop().then(function () {
+          html5QrCode.clear();
+        }).catch(function () {});
+      }
+      document.getElementById('reader').style.display = 'none';
+      document.getElementById('closeCamBtn').style.display = 'none';
+      document.getElementById('camBtn').style.display = 'block';
+    }
+  </script>
+</body>
+</html>
